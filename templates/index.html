@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previsão de Geração de Resíduos</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Previsão de Geração de Resíduos</h1>
+
+        <label>Selecione os meses para treinar o modelo:</label>
+        <div id="meses-selecionados">
+            <input type="checkbox" value="0"> Janeiro
+            <input type="checkbox" value="1"> Fevereiro
+            <input type="checkbox" value="2"> Março
+            <input type="checkbox" value="3"> Abril
+            <input type="checkbox" value="4"> Maio
+        </div>
+
+        <label>Resíduos Orgânicos (Kg):</label>
+        <input type="number" id="input-organico" value="55">
+
+        <label>Resíduos Recicláveis (Kg):</label>
+        <input type="number" id="input-reciclavel" value="32">
+
+        <label>Outros Resíduos (Kg):</label>
+        <input type="number" id="input-outros" value="22">
+
+        <label>Evento Especial (0 ou 1):</label>
+        <input type="number" id="input-evento" value="1" min="0" max="1">
+
+        <button onclick="preverResiduos()">Prever Resíduos</button>
+
+        <div id="saida-previsao"></div>
+
+        <div id="grafico-linha"></div>
+        <div id="grafico-pizza"></div>
+
+        <button onclick="exportarCSV()">Exportar CSV</button>
+        <button onclick="exportarPDF()">Exportar PDF</button>
+        <button onclick="buscarPrevisoes()">Buscar Previsões Anteriores</button>
+        <div id="previsoes-anteriores"></div>
+    </div>
+
+    <script>
+        let dadosGlobais = null;
+
+        function preverResiduos() {
+            const mesesSelecionados = Array.from(document.querySelectorAll('#meses-selecionados input:checked'))
+                                            .map(checkbox => parseInt(checkbox.value));
+            
+            if (mesesSelecionados.length === 0) {
+                alert("Selecione pelo menos um mês para treinar o modelo.");
+                return;
+            }
+
+            const organico = parseFloat(document.getElementById('input-organico').value);
+            const reciclavel = parseFloat(document.getElementById('input-reciclavel').value);
+            const outros = parseFloat(document.getElementById('input-outros').value);
+            const eventoEspecial = parseInt(document.getElementById('input-evento').value);
+
+            fetch('/prever', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mesesSelecionados: mesesSelecionados,
+                    organico: organico,
+                    reciclavel: reciclavel,
+                    outros: outros,
+                    eventoEspecial: eventoEspecial
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                document.getElementById('saida-previsao').textContent = data.previsao;
+
+                const graficoLinha = JSON.parse(data.graficoLinha);
+                const graficoPizza = JSON.parse(data.graficoPizza);
+
+                Plotly.newPlot('grafico-linha', graficoLinha.data, graficoLinha.layout);
+                Plotly.newPlot('grafico-pizza', graficoPizza.data, graficoPizza.layout);
+
+                dadosGlobais = {
+                    meses: graficoLinha.data[0].x,
+                    residuos: graficoLinha.data[0].y,
+                    graficoLinha: data.graficoLinha,
+                    graficoPizza: data.graficoPizza
+                };
+            });
+        }
+
+        function exportarCSV() {
+            if (!dadosGlobais) {
+                alert("Por favor, faça uma previsão primeiro.");
+                return;
+            }
+
+            fetch('/exportar_csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dadosGlobais)
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'residuos.csv';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        function exportarPDF() {
+            if (!dadosGlobais) {
+                alert("Por favor, faça uma previsão primeiro.");
+                return;
+            }
+
+            console.log("Iniciando exportação de PDF...");
+            console.log("Dados sendo enviados:", JSON.stringify(dadosGlobais));
+
+            fetch('/exportar_pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dadosGlobais)
+            })
+            .then(response => {
+                console.log("Resposta recebida:", response);
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.error || 'Erro desconhecido') });
+                }
+                return response.blob();
+                    })
+                    .then(blob => {
+                        console.log("Blob recebido, criando URL...");
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = 'relatorio_residuos.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        console.log("Download do PDF iniciado");
+                    })
+                    .catch(error => {
+                        console.error("Erro ao exportar PDF:", error);
+                        alert("Ocorreu um erro ao exportar o PDF: " + error.message);
+                    });
+        }
+
+        function buscarPrevisoes() {
+            fetch('/previsoes')
+                .then(response => response.json())
+                .then(data => {
+                    const previsoesList = document.getElementById('previsoes-anteriores');
+                    previsoesList.innerHTML = '<h3>Previsões Anteriores:</h3>';
+                    data.forEach(previsao => {
+                        previsoesList.innerHTML += `
+                            <p>Mês: ${previsao.mes}, Resíduos Previstos: ${previsao.residuos_previstos.toFixed(2)} Kg</p>
+                        `;
+                    });
+                })
+                .catch(error => {
+                    console.error("Erro ao buscar previsões:", error);
+                    alert("Ocorreu um erro ao buscar as previsões anteriores.");
+                });
+        }
+    </script>
+</body>
+</html>
