@@ -91,3 +91,11 @@ input[type="number"] {
     max-height: 100%;
     overflow-y: auto;
 }
+
+#grafico-pizza, #grafico-barra {
+    display: block; /* Assegura que o elemento está sendo exibido */
+    width: 100%;
+    max-width: 600px;
+    height: 400px;
+    margin: 0 auto;
+}
