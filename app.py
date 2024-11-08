@@ -1,193 +1,158 @@
-from flask import render_template, request, jsonify, send_file
-from config import app, collection
-import numpy as np
+from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
-from sklearn.linear_model import LinearRegression
 import plotly.express as px
-import json
 import plotly
 import io
-import csv
-from datetime import datetime
+import json
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-import time
-import base64
 
-# Dados fictícios com resíduos gerados por 5 meses
-data = {
-    'Mes': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai'],
-    'Organico': [50, 60, 55, 65, 70],
-    'Reciclavel': [30, 35, 32, 34, 36],
-    'Outros': [20, 25, 22, 21, 24],
-    'Evento_Especial': [0, 0, 1, 0, 0],
-    'Residuos_Gerados': [100, 120, 109, 120, 130]
-}
+app = Flask(__name__)
 
-# Convertendo os dados em DataFrame
-df = pd.DataFrame(data)
+# Caminho para o arquivo CSV
+caminho_csv = r'C:\Users\filip\OneDrive\Documentos\Filipe\Projeto dashboard\relatorio-SSA.csv'
 
-# Variável para contar os meses previstos (controle)
-mes_contador = 0
+# Carregar o DataFrame do CSV
+def carregar_dataframe(caminho):
+    try:
+        df = pd.read_csv(caminho, sep=';', encoding='utf-8', on_bad_lines='skip', decimal=',', thousands='.')
+        return df
+    except Exception as e:
+        print(f"Erro ao carregar o arquivo CSV: {e}")
+        return pd.DataFrame()
+
+# Carrega o DataFrame
+df_residuos = carregar_dataframe(caminho_csv)
+
+# Verificação se as colunas necessárias existem
+necessarias = ['Ano da geração', 'Tipo de Resíduo', 'Quantidade Gerada']
+for col in necessarias:
+    if col not in df_residuos.columns:
+        print(f"A coluna '{col}' não foi encontrada no DataFrame.")
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    anos = sorted(df_residuos['Ano da geração'].unique())
+    tipos_residuos = sorted(df_residuos['Tipo de Resíduo'].unique())
+    return render_template('index.html', anos=anos, tipos_residuos=tipos_residuos)
 
-@app.route('/prever', methods=['POST'])
-def prever():
-    global mes_contador, df
+@app.route('/dados-por-tipo', methods=['POST'])
+def dados_por_tipo():
+    tipo_residuo = request.json['tipo_residuo']
+    df_tipo = df_residuos[(df_residuos['Tipo de Resíduo'] == tipo_residuo) & 
+                        (df_residuos['Ano da geração'] >= 2012) & 
+                        (df_residuos['Ano da geração'] <= 2023)]
 
-    # Recebendo dados do formulário
-    meses_selecionados = request.json['mesesSelecionados']
-    organico = float(request.json['organico'])
-    reciclavel = float(request.json['reciclavel'])
-    outros = float(request.json['outros'])
-    evento_especial = int(request.json['eventoEspecial'])
+    # Checar se o DataFrame não está vazio
+    if df_tipo.empty:
+        return jsonify({'erro': 'Nenhum dado disponível para o tipo de resíduo selecionado.'})
 
-    if not meses_selecionados:
-        return jsonify({'error': 'Selecione pelo menos um mês para treinar o modelo.'}), 400
+    # Remover ou substituir valores NaN, se necessário
+    df_tipo['Quantidade Gerada'].fillna(0, inplace=True)
 
-    # Treinando o modelo com os meses selecionados
-    df_treino = df.iloc[meses_selecionados]
-    X_treino = df_treino[['Organico', 'Reciclavel', 'Outros', 'Evento_Especial']]
-    y_treino = df_treino['Residuos_Gerados']
+    # Converte a quantidade para float, tratando a vírgula como separador decimal
+    df_tipo['Quantidade Gerada'] = df_tipo['Quantidade Gerada'].apply(lambda x: float(str(x).replace(',', '.')))
 
-    # Criando o modelo de regressão linear
-    model = LinearRegression()
-    model.fit(X_treino, y_treino)
+    # Transformar o 'Ano da geração' em string e ordenar
+    df_tipo['Ano da geração'] = df_tipo['Ano da geração'].astype(str).sort_values()
 
-    # Prevendo resíduos para o próximo mês com base nas entradas do usuário
-    dados_mes_a_prever = {
-        'Organico': [organico],
-        'Reciclavel': [reciclavel],
-        'Outros': [outros],
-        'Evento_Especial': [evento_especial]
-    }
-    df_mes_prever = pd.DataFrame(dados_mes_a_prever)
-    residuos_previstos = model.predict(df_mes_prever)[0]
+    # Criação do gráfico de barras com barras sobrepostas
+    fig_barra = px.bar(
+        df_tipo, 
+        x='Ano da geração', 
+        y='Quantidade Gerada',
+        title=f'Resíduos por Ano para {tipo_residuo}',
+        labels={'Quantidade Gerada': 'Quantidade (kg)', 'Ano da geração': 'Ano'},
+        text='Quantidade Gerada'
+    )
+    
+    # Configurações do layout
+    fig_barra.update_layout(
+        margin=dict(t=50, b=50, l=50, r=50),
+        xaxis_title='Ano',
+        yaxis_title='Quantidade (kg)',
+        yaxis=dict(type='linear'),
+        barmode='overlay',
+        xaxis=dict(categoryorder='category ascending')  # Garante a ordenação correta do eixo X
+    )
+    
+    fig_barra.update_traces(
+        texttemplate='%{text:.2f}', 
+        textposition='outside',
+        textfont=dict(size=10)
+    )
 
-    # Aplicando o aumento de 50% no valor previsto se houver evento especial
-    if evento_especial == 1:
-        residuos_previstos *= 1.5
-
-    # Criando nome dinâmico para o novo mês
-    mes_contador += 1
-    nome_novo_mes = f'Previsto {mes_contador}'
-
-    # Adicionando o novo mês aos dados existentes
-    df.loc[len(df)] = [nome_novo_mes, organico, reciclavel, outros, evento_especial, residuos_previstos]
-
-    # Gráfico 1: Linha sinuosa
-    fig_linha = px.line(df, x='Mes', y='Residuos_Gerados',
-                        title='Resíduos Gerados por Mês',
-                        labels={'Mes': 'Mês', 'Residuos_Gerados': 'Resíduos (Kg)'},
-                        line_shape='spline', markers=True)
-
-    # Gráfico 2: Gráfico de pizza
-    residuos_por_tipo = {
-        'Tipo': ['Orgânico', 'Reciclável', 'Outros'],
-        'Quantidade': [organico, reciclavel, outros]
-    }
-    df_tipo = pd.DataFrame(residuos_por_tipo)
-    fig_pizza = px.pie(df_tipo, names='Tipo', values='Quantidade',
-                    title=f'Distribuição de Resíduos por Tipo ({nome_novo_mes})')
-
-    # Convertendo gráficos para JSON
-    linha_json = json.dumps(fig_linha, cls=plotly.utils.PlotlyJSONEncoder)
-    pizza_json = json.dumps(fig_pizza, cls=plotly.utils.PlotlyJSONEncoder)
-
-    # Salvando a previsão no MongoDB
-    previsao_doc = {
-        'mes': nome_novo_mes,
-        'organico': organico,
-        'reciclavel': reciclavel,
-        'outros': outros,
-        'evento_especial': evento_especial,
-        'residuos_previstos': residuos_previstos,
-        'data_previsao': datetime.now()
-    }
-    resultado = collection.insert_one(previsao_doc)
+    # Gráfico de Pizza
+    fig_pizza = px.pie(
+        df_tipo,
+        values='Quantidade Gerada', 
+        names='Ano da geração',
+        title=f'Proporção de Quantidade por Ano para {tipo_residuo}'
+    )
+    
+    fig_pizza.update_traces(textinfo='percent+label')
+    fig_pizza.update_layout(margin=dict(t=50, b=50, l=50, r=50))
 
     return jsonify({
-        'previsao': f"Previsão de resíduos para {nome_novo_mes}: {residuos_previstos:.2f} Kg",
-        'graficoLinha': linha_json,
-        'graficoPizza': pizza_json,
-        'id_previsao': str(resultado.inserted_id)
+        'graficoBarra': json.dumps(fig_barra, cls=plotly.utils.PlotlyJSONEncoder),
+        'graficoPizza': json.dumps(fig_pizza, cls=plotly.utils.PlotlyJSONEncoder)
     })
-
-@app.route('/previsoes', methods=['GET'])
-def obter_previsoes():
-    previsoes = list(collection.find())
-    for previsao in previsoes:
-        previsao['_id'] = str(previsao['_id'])  # Converte ObjectId para string
-    return jsonify(previsoes)
 
 @app.route('/exportar_csv', methods=['POST'])
 def exportar_csv():
-    previsoes = list(collection.find())
-    
+    tipo_residuo = request.json['tipo_residuo']
+    df_tipo = df_residuos[(df_residuos['Tipo de Resíduo'] == tipo_residuo) & 
+                        (df_residuos['Ano da geração'] >= 2012) & 
+                        (df_residuos['Ano da geração'] <= 2023)]
+    df_tipo['Quantidade Gerada'] = df_tipo['Quantidade Gerada'].apply(lambda x: f"{x:.2f}".replace('.', ','))
+
     output = io.StringIO()
-    writer = csv.writer(output)
-    
-    writer.writerow(['Mês', 'Resíduos Gerados', 'Orgânico', 'Reciclável', 'Outros', 'Evento Especial'])
-    for previsao in previsoes:
-        writer.writerow([
-            previsao['mes'],
-            previsao['residuos_previstos'],
-            previsao['organico'],
-            previsao['reciclavel'],
-            previsao['outros'],
-            previsao['evento_especial']
-        ])
-    
+    df_tipo.to_csv(output, index=False, sep=';', encoding='utf-8')
     output.seek(0)
+    
     return send_file(
         io.BytesIO(output.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        download_name='residuos.csv'
+        download_name=f'residuos_{tipo_residuo}.csv'
     )
 
 @app.route('/exportar_pdf', methods=['POST'])
 def exportar_pdf():
-    try:
-        app.logger.info("Iniciando exportação de PDF")
-        previsoes = list(collection.find())
-        app.logger.info(f"Dados recuperados: {previsoes}")
+    tipo_residuo = request.json['tipo_residuo']
+    df_tipo = df_residuos[(df_residuos['Tipo de Resíduo'] == tipo_residuo) & 
+                        (df_residuos['Ano da geração'] >= 2012) & 
+                        (df_residuos['Ano da geração'] <= 2023)]
+    
+    for _, row in df_tipo.iterrows():
+        line = f"Ano: {row['Ano da geração']}, Quantidade: {row['Quantidade Gerada']:.2f}".replace('.', ',')
 
-        buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=letter)
-        width, height = letter
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
 
-        # Título
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(inch, height - inch, "Relatório de Resíduos Gerados")
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(72, height - 72, f"Relatório de Resíduos Gerados - {tipo_residuo}")
 
-        # Dados
-        p.setFont("Helvetica", 12)
-        y = height - 2*inch
-        for previsao in previsoes:
-            p.drawString(inch, y, f"{previsao['mes']}: {previsao['residuos_previstos']:.2f} Kg")
-            y -= 20
+    p.setFont("Helvetica", 12)
+    y = height - 144
+    for _, row in df_tipo.iterrows():
+        line = f"Ano: {row['Ano da geração']}, Quantidade: {row['Quantidade Gerada']}"
+        p.drawString(72, y, line)
+        y -= 12
+        if y < 72:
+            p.showPage()
+            y = height - 72
 
-        app.logger.info("Finalizando PDF")
-        p.showPage()
-        p.save()
+    p.save()
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'relatorio_residuos_{tipo_residuo}.pdf'
+    )
 
-        buffer.seek(0)
-        app.logger.info("PDF gerado com sucesso")
-        time.sleep(1)  # Adiciona um atraso de 1 segundo
-        return send_file(
-            buffer,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name='relatorio_residuos.pdf'
-        )
-    except Exception as e:
-        app.logger.error(f"Erro ao gerar PDF: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-if (__name__) == '__main__':
+if __name__ == '__main__':
     app.run(debug=True)
