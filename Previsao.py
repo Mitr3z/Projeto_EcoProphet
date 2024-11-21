@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Ler os dados do arquivo CSV (olhei essa funçao e achei válida pq a gente vai usar os dados secos no csv)
-data = pd.read_csv('dados_lixo_historicos.csv')
+data = pd.read_csv('dados_lixo_historicos.csv') # Os dados vão estar aqui'C:\Users\filip\OneDrive\Documentos\Filipe\Projeto dashboard\relatorio-SSA.csv'
 
 # Preparar os dados
 X = data[['data']]  # Usaremos a coluna 'data' como variável independente
