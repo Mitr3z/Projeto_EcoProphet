@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise de Geração de Resíduos</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='ecoprophet_icon_y1o_icon.ico') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Análise de Geração de Resíduos</h1>
+
+        <label for="select-tipo">Selecione o Tipo de Resíduo:</label>
+        <select id="select-tipo">
+            {% for tipo in tipos_residuos %}
+                <option value="{{ tipo }}">{{ tipo }}</option>
+            {% endfor %}
+        </select>
+
+        <button onclick="analisarResiduos()">Analisar Resíduos</button>
+
+        <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap;">
+            <div id="grafico-barra" style="width:100%; max-width:600px; height:400px; margin: 20px;"></div>
+            <div id="grafico-pizza" style="width:100%; max-width:600px; height:400px; margin: 20px;"></div>
+        </div>
+
+        <button onclick="exportarCSV('analise')">Exportar CSV</button>
+        <button onclick="exportarPDF('analise')">Exportar PDF</button>
+        <button onclick="window.location.href='/'">Voltar para Página Inicial</button>
+    </div>
+
+    <script>
+        function analisarResiduos() {
+            const tipo_residuo = document.getElementById('select-tipo').value;
+
+            fetch('/dados-por-tipo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipo_residuo })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const graficoBarra = JSON.parse(data.graficoBarra);
+                const graficoPizza = JSON.parse(data.graficoPizza);
+
+                Plotly.newPlot('grafico-barra', graficoBarra.data, graficoBarra.layout, {responsive: true});
+                Plotly.newPlot('grafico-pizza', graficoPizza.data, graficoPizza.layout, {responsive: true});
+            });
+        }
+
+        function exportarCSV(tipoRelatorio) {
+            const tipo_residuo = document.getElementById('select-tipo').value;
+            fetch('/exportar_csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipo_residuo, tipo_relatorio: tipoRelatorio })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `residuos_${tipo_residuo}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        function exportarPDF(tipoRelatorio) {
+            const tipo_residuo = document.getElementById('select-tipo').value;
+            fetch('/exportar_pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipo_residuo, tipo_relatorio: tipoRelatorio })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `relatorio_residuos_${tipo_residuo}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error("Erro ao exportar PDF:", error);
+                alert("Ocorreu um erro ao exportar o PDF.");
+            });
+        }
+    </script>
+</body>
+</html>

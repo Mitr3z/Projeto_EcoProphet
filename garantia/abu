@@ -1,0 +1,30 @@
+pdf_buffer = io.BytesIO()
+    c = canvas.Canvas(pdf_buffer)
+    
+    # Add graph titles
+    c.drawString(10, 750, "Resíduos Gerados por Mês")
+    c.drawString(350, 750, f"Distribuição de Resíduos por Tipo ({nome_novo_mes})")
+
+    # Save graphs as images
+    fig_linha.write_image(c, 50, 700, width=300, height=200)
+    fig_pizza.write_image(c, 450, 700, width=300, height=200)
+
+    # Close the PDF file
+    c.save()
+
+    # Convert PDF buffer to bytes
+    pdf_bytes = pdf_buffer.getvalue()
+
+    # Create CSV buffer
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False, sep=';')
+    csv_content = csv_buffer.getvalue()
+
+    # Return the results along with PDF and CSV data
+    return jsonify({
+        'previsao': f"Previsão de resíduos para {nome_novo_mes}: {residuos_previstos:.2f} Kg",
+        'graficoLinha': json.dumps(fig_linha, cls=plotly.utils.PlotlyJSONEncoder),
+        'graficoPizza': json.dumps(fig_pizza, cls=plotly.utils.PlotlyJSONEncoder),
+        'pdf_data': base64.b64encode(pdf_bytes).decode('utf-8'),
+        'csv_data': csv_content
+    })
