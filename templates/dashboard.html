@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoProphet - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='ecoprophet_icon_y1o_icon.ico') }}">
+</head>
+<body>
+    <div class="container dashboard-container">
+        <h1>Bem-vindo, {{ username }}!</h1>
+        <nav>
+            <a href="{{ url_for('analise') }}" class="btn">Análise de Resíduos</a>
+            <a href="{{ url_for('previsao') }}" class="btn">Previsão de Resíduos</a>
+            <a href="{{ url_for('logout') }}" class="btn">Logout</a>
+        </nav>
+    </div>
+</body>
+</html>

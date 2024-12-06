@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previsão de Geração de Resíduos</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='ecoprophet_icon_y1o_icon.ico') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Previsão de Geração de Resíduos</h1>
+
+        <label for="select-tipo">Selecione o Tipo de Resíduo:</label>
+        <select id="select-tipo">
+            {% for tipo in tipos_residuos %}
+                <option value="{{ tipo }}">{{ tipo }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="anos-previsao">Número de Anos para Prever:</label>
+        <input type="number" id="anos-previsao" min="1" max="30" value="5">
+
+        <button onclick="fazerPrevisao()">Fazer Previsão</button>
+
+        <div id="grafico-previsao" style="width:100%; height:400px;"></div>
+        <div id="tabela-previsao"></div>
+
+        <button onclick="exportarCSV('previsao')">Exportar CSV</button>
+        <button onclick="exportarPDF('previsao')">Exportar PDF</button>
+        <button onclick="window.location.href='/'">Voltar para Página Inicial</button>
+    </div>
+
+    <script>
+        function fazerPrevisao() {
+            const tipoResiduo = document.getElementById('select-tipo').value;
+            const anosPrevisao = parseInt(document.getElementById('anos-previsao').value);
+
+            fetch('/prever', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipoResiduo, anos_previsao: anosPrevisao })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.erro) {
+                    alert(data.erro);
+                    return;
+                }
+
+                const graficoPrevisao = JSON.parse(data.grafico);
+                Plotly.newPlot('grafico-previsao', graficoPrevisao.data, graficoPrevisao.layout);
+
+                let tabelaHtml = '<table><tr><th>Ano</th><th>Quantidade Prevista (kg)</th></tr>';
+                data.previsoes.forEach(p => {
+                    tabelaHtml += `<tr><td>${p.ano}</td><td>${p.quantidade.toFixed(2)}</td></tr>`;
+                });
+                tabelaHtml += '</table>';
+                document.getElementById('tabela-previsao').innerHTML = tabelaHtml;
+            });
+        }
+
+        function exportarCSV(tipoRelatorio) {
+            const tipo_residuo = document.getElementById('select-tipo').value;
+            fetch('/exportar_csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipo_residuo, tipo_relatorio: tipoRelatorio })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `residuos_${tipo_residuo}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        function exportarPDF(tipoRelatorio) {
+            const tipo_residuo = document.getElementById('select-tipo').value;
+            fetch('/exportar_pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_residuo: tipo_residuo, tipo_relatorio: tipoRelatorio })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `relatorio_residuos_${tipo_residuo}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error("Erro ao exportar PDF:", error);
+                alert("Ocorreu um erro ao exportar o PDF.");
+            });
+        }
+    </script>
+</body>
+</html>
