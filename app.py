@@ -26,7 +26,7 @@ previsoes_collection = db['previsoes']
 bcrypt = Bcrypt(app)
 
 # É preciso alterar o caminho sempre para onde quer que o arquivo CSV esteja possa ser lido
-caminho_csv = r'C:\Users\filip\OneDrive\Documentos\Filipe\Projeto dashboard\relatorio-SSA.csv'
+caminho_csv = r'Projeto_EcoProphet\relatorio-SSA.csv'
 
 
 def carregar_dataframe(caminho):
